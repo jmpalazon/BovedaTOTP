@@ -1,0 +1,14 @@
+# Binarios de Neutralino (se descargan con: neu update)
+/bin/
+# Cliente JS de Neutralino (se genera con: neu update)
+/resources/js/neutralino.js
+/resources/js/neutralino.d.ts
+# Salida de compilación
+/dist/
+# Datos locales de pruebas
+/.storage/
+/.tmp/
+neutralinojs.log
+# Sistema
+Thumbs.db
+.DS_Store

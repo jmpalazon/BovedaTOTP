@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Bóveda TOTP" UpgradeCode="4ddad7e4-aca6-48e0-ad82-b9e66730e7f7"
+           Language="3082" Version="1.2.0" Manufacturer="José Mª Palazón">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine"
+             Description="Bóveda TOTP — generador local de códigos de verificación en dos pasos"
+             Manufacturer="José Mª Palazón"/>
+    <MajorUpgrade DowngradeErrorMessage="Ya hay instalada una versión más reciente de Bóveda TOTP."/>
+    <Media Id="1" Cabinet="app.cab" EmbedCab="yes"/>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="BovedaTOTP">
+          <Component Id="MainExe" Guid="375931b6-e151-4393-9bf1-81c563ec3d5f" Win64="yes">
+            <File Id="AppExe" Source="BovedaTOTP.exe" KeyPath="yes"/>
+          </Component>
+          <Component Id="ResNeu" Guid="466b6be4-5fda-4680-ad4d-39bcc39b72c8" Win64="yes">
+            <File Id="ResFile" Source="resources.neu" KeyPath="yes"/>
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="AppMenuDir" Name="Bóveda TOTP">
+          <Component Id="MenuShortcut" Guid="daa0e998-1627-4221-aec5-0d1384b178f8" Win64="yes">
+            <Shortcut Id="StartMenuShortcut" Name="Bóveda TOTP"
+                      Description="Códigos de verificación en dos pasos, cifrados y sin conexión"
+                      Target="[INSTALLDIR]BovedaTOTP.exe" WorkingDirectory="INSTALLDIR"/>
+            <RemoveFolder Id="RemoveMenuDir" On="uninstall"/>
+            <RegistryValue Root="HKCU" Key="Software\JoseMPalazon\BovedaTOTP"
+                           Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature Id="MainFeature" Title="Bóveda TOTP" Level="1">
+      <ComponentRef Id="MainExe"/>
+      <ComponentRef Id="ResNeu"/>
+      <ComponentRef Id="MenuShortcut"/>
+    </Feature>
+  </Product>
+</Wix>

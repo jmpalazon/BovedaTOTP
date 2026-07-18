@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bóveda TOTP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="js/neutralino.js"></script>
+<script src="js/jsqr.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1117;
+    --bg2:#131a23;
+    --panel:#1a2230;
+    --panel-hi:#212b3d;
+    --line:#2c3a50;
+    --ink:#dce6f2;
+    --ink-dim:#7c8aa0;
+    --accent:#ffb454;
+    --accent-dim:#8a6430;
+    --ok:#7ee787;
+    --danger:#ff7b72;
+    --mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+    --sans:'Bricolage Grotesque',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, #1c2a3f66, transparent),
+      repeating-linear-gradient(0deg, transparent 0 2px, #ffffff03 2px 4px);
+    color:var(--ink);
+    font-family:var(--sans);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:32px 16px 64px;
+  }
+  header{width:100%;max-width:560px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+  h1{font-size:22px;font-weight:800;letter-spacing:-.5px}
+  h1 span{color:var(--accent)}
+  .sub{font-family:var(--mono);font-size:11px;color:var(--ink-dim)}
+  .stage{width:100%;max-width:560px}
+
+  /* ---- pantallas de bloqueo ---- */
+  .lockbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:32px;text-align:center;box-shadow:0 20px 60px #00000066}
+  .lockbox h2{font-size:17px;margin-bottom:6px}
+  .lockbox p{font-size:13px;color:var(--ink-dim);margin-bottom:20px;line-height:1.5}
+  input[type=password],input[type=text],select{
+    width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:8px;
+    color:var(--ink);font-family:var(--mono);font-size:14px;padding:11px 13px;outline:none;
+    transition:border-color .15s;
+  }
+  input:focus,select:focus{border-color:var(--accent)}
+  input[type=color]{
+    width:38px;height:38px;min-width:38px;border:1px solid var(--line);border-radius:8px;
+    background:var(--bg2);padding:3px;cursor:pointer;outline:none;
+  }
+  .btn{
+    display:inline-block;border:1px solid var(--accent-dim);background:linear-gradient(180deg,#2a2415,#201a0e);
+    color:var(--accent);font-family:var(--mono);font-size:13px;font-weight:600;
+    padding:10px 18px;border-radius:8px;cursor:pointer;transition:filter .15s,transform .05s;
+  }
+  .btn:hover{filter:brightness(1.25)}
+  .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-dim)}
+  .btn.danger{color:var(--danger);border-color:#5a2b28;background:#241315}
+  .row{display:flex;gap:10px;margin-top:14px;justify-content:center;flex-wrap:wrap}
+  .field{margin-bottom:12px;text-align:left}
+  .field label{display:block;font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-bottom:5px;text-transform:uppercase;letter-spacing:.08em}
+  .msg{font-family:var(--mono);font-size:12px;margin-top:12px;min-height:16px}
+  .msg.err{color:var(--danger)} .msg.ok{color:var(--ok)}
+
+  /* ---- barra de herramientas y carpetas ---- */
+  .toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+  .toolbar .btn{font-size:12px;padding:8px 14px}
+  .toolbar .search{flex:1;min-width:140px;font-size:12px;padding:8px 12px}
+  .folderbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;
+    padding:6px 13px;border:1px solid var(--line);border-radius:999px;cursor:pointer;
+    color:var(--ink-dim);background:var(--bg2);transition:border-color .15s,color .15s,background .15s;
+    user-select:none;
+  }
+  .chip:hover{border-color:var(--accent-dim);color:var(--ink)}
+  .chip.active{color:var(--ink);border-color:var(--accent-dim);background:var(--panel-hi)}
+  .chip .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .seclabel{
+    font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink-dim);margin:20px 4px 10px;display:flex;align-items:center;gap:8px;
+  }
+  .seclabel:first-child{margin-top:0}
+  .seclabel .dot{width:8px;height:8px;border-radius:50%;flex:none}
+
+  /* ---- tarjetas ---- */
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:14px;
+    cursor:pointer;position:relative;overflow:hidden;transition:border-color .15s,background .15s;
+    border-left:4px solid var(--line);
+  }
+  .card:hover{border-color:var(--accent-dim);background:var(--panel-hi)}
+  .card .meta{flex:1;min-width:0}
+  .card .issuer{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .label{font-family:var(--mono);font-size:11px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .code{
+    font-family:var(--mono);font-size:26px;font-weight:600;letter-spacing:.06em;
+    color:var(--accent);font-variant-numeric:tabular-nums;
+  }
+  .card.expiring .code{color:var(--danger)}
+  .card .icobtn{
+    background:none;border:none;color:var(--ink-dim);font-family:var(--mono);
+    font-size:14px;cursor:pointer;padding:5px;opacity:0;transition:opacity .15s;
+  }
+  .card:hover .icobtn{opacity:.7}
+  .card .icobtn:hover{opacity:1;color:var(--ink)}
+  .card .icobtn.del:hover{color:var(--danger)}
+  .timebar{position:absolute;left:0;bottom:0;height:3px;background:var(--accent);opacity:.55;transition:width .25s linear}
+  .card.expiring .timebar{background:var(--danger)}
+  .copied-tag{
+    position:absolute;right:14px;top:10px;font-family:var(--mono);font-size:10px;
+    color:var(--ok);opacity:0;transition:opacity .2s;pointer-events:none;
+  }
+  .copied-tag.show{opacity:1}
+  .empty{
+    border:1px dashed var(--line);border-radius:12px;padding:36px;text-align:center;
+    color:var(--ink-dim);font-size:13px;line-height:1.6;
+  }
+  /* ---- gestor de carpetas ---- */
+  .foldrow{display:flex;gap:8px;align-items:center;margin-bottom:9px}
+  .foldrow input[type=text]{flex:1}
+  .foldrow .icobtn{background:none;border:none;color:var(--ink-dim);font-size:15px;cursor:pointer;padding:6px}
+  .foldrow .icobtn:hover{color:var(--danger)}
+  /* ---- modales ---- */
+  .modal-bg{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
+  .modal-bg.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px;width:100%;max-width:440px;box-shadow:0 20px 60px #000a;max-height:90vh;overflow-y:auto}
+  .modal h3{font-size:16px;margin-bottom:4px}
+  .modal .hint{font-size:12px;color:var(--ink-dim);margin-bottom:16px;line-height:1.5}
+  footer{margin-top:auto;padding-top:40px;font-family:var(--mono);font-size:10px;color:#4a586e;text-align:center;line-height:1.7}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bóveda <span>TOTP</span></h1>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div class="sub" id="clock">--:--:--</div>
+    <button class="btn ghost" style="font-size:11px;padding:6px 12px" onclick="openCredits()" title="Acerca de">☰</button>
+  </div>
+</header>
+
+<div class="stage">
+
+  <!-- Crear bóveda -->
+  <div class="lockbox" id="scr-create" style="display:none">
+    <h2>Crear bóveda</h2>
+    <p>Elige una contraseña maestra. Con ella se cifran tus secretos, carpetas y etiquetas (AES-256-GCM, clave derivada con PBKDF2). Si la olvidas, no hay recuperación posible.</p>
+    <div class="field"><label>Contraseña maestra</label><input type="password" id="new-pass1" autocomplete="new-password"></div>
+    <div class="field"><label>Repítela</label><input type="password" id="new-pass2" autocomplete="new-password"></div>
+    <div class="row">
+      <button class="btn" onclick="createVault()">Crear bóveda</button>
+      <button class="btn ghost" onclick="importVaultFile(true)">Importar copia</button>
+    </div>
+    <div class="msg" id="create-msg"></div>
+  </div>
+
+  <!-- Desbloquear -->
+  <div class="lockbox" id="scr-unlock" style="display:none">
+    <h2>Bóveda bloqueada</h2>
+    <p>Introduce tu contraseña maestra para descifrar los secretos.</p>
+    <div class="field"><label>Contraseña maestra</label><input type="password" id="unlock-pass" autocomplete="current-password" onkeydown="if(event.key==='Enter')unlockVault()"></div>
+    <div class="row"><button class="btn" onclick="unlockVault()">Desbloquear</button></div>
+    <div class="msg" id="unlock-msg"></div>
+  </div>
+
+  <!-- Lista -->
+  <div id="scr-main" style="display:none">
+    <div class="toolbar">
+      <button class="btn" onclick="openAdd()">+ Añadir</button>
+      <button class="btn" onclick="openMigrate()">⇊ Google Auth</button>
+      <button class="btn ghost" onclick="openFolders()">🗀 Carpetas</button>
+      <input type="text" class="search" id="search" placeholder="buscar…" oninput="renderList(true)">
+    </div>
+    <div class="toolbar" style="margin-bottom:2px">
+      <button class="btn ghost" onclick="exportVault()">Exportar copia</button>
+      <button class="btn ghost" onclick="importVaultFile(false)">Importar</button>
+      <button class="btn ghost" onclick="lockNow()">Bloquear</button>
+    </div>
+    <div class="folderbar" id="folderbar"></div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<!-- Modal alta / edición de cuenta -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3 id="add-title">Nueva cuenta</h3>
+    <p class="hint">Pega el secreto Base32 que te dio el servicio (ej. <code>JBSW Y3DP EHPK 3PXP</code>) o una URI completa <code>otpauth://totp/...</code> obtenida del QR.</p>
+    <div class="field"><label>Servicio</label><input type="text" id="add-issuer" placeholder="GitHub, OVH, Google..."></div>
+    <div class="field"><label>Cuenta / etiqueta</label><input type="text" id="add-label" placeholder="jose@ejemplo.com (opcional)"></div>
+    <div class="field"><label>Secreto o URI otpauth</label><input type="text" id="add-secret" placeholder="Base32 u otpauth://totp/..." autocomplete="off"></div>
+    <div class="field"><label>Carpeta</label><select id="add-folder"></select></div>
+    <div class="row">
+      <button class="btn" onclick="addAccount()">Guardar</button>
+      <button class="btn ghost" onclick="closeAdd()">Cancelar</button>
+    </div>
+    <div class="msg" id="add-msg"></div>
+  </div>
+</div>
+
+<!-- Modal migración Google Authenticator -->
+<div class="modal-bg" id="modal-mig">
+  <div class="modal">
+    <h3>Importar de Google Authenticator</h3>
+    <p class="hint">
+      En el móvil: Google Authenticator → menú → <b>Transferir cuentas</b> → <b>Exportar cuentas</b> → selecciona las que quieras. Te mostrará uno o varios QR.<br><br>
+      Haz una captura de pantalla de cada QR, pásala a este PC y súbela aquí (se descodifica en local, no sale de tu equipo). También puedes pegar directamente la URI <code>otpauth-migration://...</code> si la has leído con otro lector.
+    </p>
+    <div class="field">
+      <label>Imagen del QR de exportación</label>
+      <input type="file" id="mig-file" accept="image/*" style="width:100%;color:var(--ink-dim);font-family:var(--mono);font-size:12px" onchange="migFromImage(this.files[0])">
+    </div>
+    <div class="field">
+      <label>… o pega la URI otpauth-migration://</label>
+      <input type="text" id="mig-uri" placeholder="otpauth-migration://offline?data=..." autocomplete="off">
+    </div>
+    <div class="field"><label>Carpeta de destino</label><select id="mig-folder"></select></div>
+    <div class="row">
+      <button class="btn" onclick="migFromUriField()">Importar de la URI</button>
+      <button class="btn ghost" onclick="closeMigrate()">Cerrar</button>
+    </div>
+    <div class="msg" id="mig-msg"></div>
+  </div>
+</div>
+
+<!-- Modal gestor de carpetas -->
+<div class="modal-bg" id="modal-fold">
+  <div class="modal">
+    <h3>Carpetas</h3>
+    <p class="hint">Crea carpetas con nombre y color para agrupar tus cuentas. Los nombres y colores se guardan cifrados junto al resto de la bóveda.</p>
+    <div id="fold-rows"></div>
+    <div class="row" style="justify-content:flex-start">
+      <button class="btn" onclick="addFolder()">+ Añadir carpeta</button>
+      <button class="btn ghost" onclick="closeFolders()">Cerrar</button>
+    </div>
+    <div class="msg" id="fold-msg"></div>
+  </div>
+</div>
+
+<!-- Modal créditos -->
+<div class="modal-bg" id="modal-cred">
+  <div class="modal" style="text-align:center">
+    <h3 style="font-size:20px">Bóveda <span style="color:var(--accent)">TOTP</span></h3>
+    <p class="hint" style="margin:16px 0 4px;font-size:13px;line-height:1.8">
+      Aplicación desarrollada por<br>
+      <b style="color:var(--ink);font-size:15px">José Mª Palazón</b><br>
+      <a href="#" onclick="openExternal('https://josemariapalazon.es');return false"
+         style="color:var(--accent);text-decoration:none;font-family:var(--mono);font-size:13px">josemariapalazon.es</a>
+    </p>
+    <p class="hint" style="margin-bottom:18px">Aplicación totalmente gratuita.</p>
+    <div class="row">
+      <button class="btn" onclick="openDonate()">♥ Apoya este y otros proyectos</button>
+    </div>
+    <p class="hint" style="margin-top:10px;font-size:11px">Donación por el importe que tú elijas, a través de PayPal.</p>
+    <div class="row" style="margin-top:6px"><button class="btn ghost" onclick="closeCredits()">Cerrar</button></div>
+  </div>
+</div>
+
+<footer>
+  Todo se procesa y almacena localmente, cifrado de extremo a extremo.<br>
+  AES-256-GCM · PBKDF2-SHA256 × 300.000 · TOTP RFC 6238 · Bloqueo automático a los 5 min de inactividad
+</footer>
+
+<script>
+"use strict";
+const LS_KEY = "totp_vault_v1";
+const ITER = 300000;
+const AUTOLOCK_MS = 5 * 60 * 1000;   // bloqueo automático por inactividad
+let vaultRaw = null;                 // bóveda cifrada serializada (lo único que toca el disco)
+let appDataDir = null;               // carpeta de datos (%APPDATA%/BovedaTOTP) en modo instalado
+let portableMode = false;            // true si existe una bóveda .storage junto al ejecutable
+let vaultKey = null;                 // CryptoKey en memoria mientras está desbloqueada
+let accounts = [];                   // [{issuer,label,secret,digits,period,algo,folder}]
+let folders = [];                    // [{id,name,color}]  — se cifran junto a las cuentas
+let currentFilter = null;            // null = todas | "none" = sin carpeta | id de carpeta
+let editIdx = null;                  // índice de cuenta en edición (null = alta nueva)
+let lastWindow = -1;
+let lastActivity = Date.now();
+let clipTimer = null;
+
+const isApp = () => typeof Neutralino !== "undefined";
+
+/* ================= utilidades ================= */
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function base32Decode(str){
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const clean = str.toUpperCase().replace(/[\s=-]/g,"");
+  if(!clean.length || /[^A-Z2-7]/.test(clean)) throw new Error("Secreto Base32 no válido");
+  let bits = 0, value = 0, out = [];
+  for(const ch of clean){
+    value = (value << 5) | alphabet.indexOf(ch);
+    bits += 5;
+    if(bits >= 8){ out.push((value >>> (bits-8)) & 0xff); bits -= 8; }
+  }
+  return new Uint8Array(out);
+}
+function base32Encode(bytes){
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0, value = 0, out = "";
+  for(const b of bytes){
+    value = (value << 8) | b; bits += 8;
+    while(bits >= 5){ out += alphabet[(value >>> (bits-5)) & 31]; bits -= 5; }
+  }
+  if(bits > 0) out += alphabet[(value << (5-bits)) & 31];
+  return out;
+}
+
+/* ================= almacenamiento (navegador o app nativa) ================= */
+async function storeInit(){
+  if(isApp()){
+    Neutralino.init();
+    Neutralino.events.on("windowClose", () => Neutralino.app.exit());
+    // 1) modo portable: bóveda .storage junto al ejecutable (versiones anteriores o uso en pendrive)
+    try{
+      const legacy = await Neutralino.storage.getData(LS_KEY);
+      if(legacy){ vaultRaw = legacy; portableMode = true; return; }
+    }catch(e){ /* no hay bóveda portable */ }
+    // 2) modo instalado: bóveda en la carpeta de datos del usuario (funciona desde Archivos de programa)
+    try{
+      const base = await Neutralino.os.getPath("data");
+      appDataDir = base.replace(/[\\/]+$/,"") + "/BovedaTOTP";
+      try{ await Neutralino.filesystem.createDirectory(appDataDir); }catch(e){ /* ya existe */ }
+      try{ vaultRaw = await Neutralino.filesystem.readFile(appDataDir + "/vault.json"); }
+      catch(e){ vaultRaw = null; }
+    }catch(e){
+      appDataDir = null; vaultRaw = null;
+    }
+  }else{
+    vaultRaw = localStorage.getItem(LS_KEY);
+  }
+}
+async function storeWrite(str){
+  vaultRaw = str;
+  if(isApp()){
+    if(portableMode) await Neutralino.storage.setData(LS_KEY, str);
+    else if(appDataDir) await Neutralino.filesystem.writeFile(appDataDir + "/vault.json", str);
+    else await Neutralino.storage.setData(LS_KEY, str);
+  }
+  else localStorage.setItem(LS_KEY, str);
+}
+
+/* ================= créditos y donaciones ================= */
+const DONATE_URL = "https://www.paypal.com/donate/?business="
+  + encodeURIComponent("jm" + "palazon" + "@" + "gmail.com")
+  + "&currency_code=EUR&no_recurring=0&item_name="
+  + encodeURIComponent("Apoyo a los proyectos de José Mª Palazón");
+function openExternal(url){
+  if(isApp()) Neutralino.os.open(url);
+  else window.open(url, "_blank", "noopener");
+}
+function openCredits(){ $("modal-cred").classList.add("open"); }
+function closeCredits(){ $("modal-cred").classList.remove("open"); }
+function openDonate(){ openExternal(DONATE_URL); }
+
+/* ================= TOTP ================= */
+async function totp(acc, counter){
+  const keyBytes = base32Decode(acc.secret);
+  const algoMap = {SHA1:"SHA-1",SHA256:"SHA-256",SHA512:"SHA-512"};
+  const hashName = algoMap[(acc.algo||"SHA1").toUpperCase()] || "SHA-1";
+  const key = await crypto.subtle.importKey("raw", keyBytes, {name:"HMAC", hash:hashName}, false, ["sign"]);
+  const msg = new ArrayBuffer(8);
+  new DataView(msg).setUint32(4, counter);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, msg));
+  const offset = mac[mac.length-1] & 0x0f;
+  const bin = ((mac[offset]&0x7f)<<24) | (mac[offset+1]<<16) | (mac[offset+2]<<8) | mac[offset+3];
+  const digits = acc.digits || 6;
+  return String(bin % 10**digits).padStart(digits,"0");
+}
+
+/* ================= cifrado de la bóveda ================= */
+async function deriveKey(pass, salt){
+  const base = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt, iterations:ITER, hash:"SHA-256"},
+    base, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+}
+function vaultPlain(){ return JSON.stringify({v:2, accounts, folders}); }
+async function saveVault(){
+  const salt = unb64(JSON.parse(vaultRaw).salt);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({name:"AES-GCM", iv}, vaultKey, enc.encode(vaultPlain()));
+  await storeWrite(JSON.stringify({salt:b64(salt), iv:b64(iv), data:b64(data), iter:ITER}));
+}
+async function initVault(pass){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  vaultKey = await deriveKey(pass, salt);
+  accounts = []; folders = [];
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({name:"AES-GCM", iv}, vaultKey, enc.encode(vaultPlain()));
+  await storeWrite(JSON.stringify({salt:b64(salt), iv:b64(iv), data:b64(data), iter:ITER}));
+}
+async function openVault(pass){
+  const raw = JSON.parse(vaultRaw);
+  const key = await deriveKey(pass, unb64(raw.salt));
+  const plainBuf = await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(raw.iv)}, key, unb64(raw.data));
+  vaultKey = key;
+  const plain = JSON.parse(dec.decode(plainBuf));
+  if(Array.isArray(plain)){ accounts = plain; folders = []; }   // migración de bóvedas v1
+  else { accounts = plain.accounts || []; folders = plain.folders || []; }
+}
+
+/* ================= pantallas ================= */
+function show(id){
+  for(const s of ["scr-create","scr-unlock","scr-main"]) $(s).style.display = (s===id?"block":"none");
+}
+function boot(){
+  show(vaultRaw ? "scr-unlock" : "scr-create");
+  if(vaultRaw) $("unlock-pass").focus();
+}
+async function createVault(){
+  const p1 = $("new-pass1").value, p2 = $("new-pass2").value, m = $("create-msg");
+  m.className = "msg err";
+  if(p1.length < 8){ m.textContent = "Mínimo 8 caracteres."; return; }
+  if(p1 !== p2){ m.textContent = "No coinciden."; return; }
+  await initVault(p1);
+  $("new-pass1").value = $("new-pass2").value = "";
+  enterMain();
+}
+async function unlockVault(){
+  const m = $("unlock-msg"); m.className = "msg err"; m.textContent = "";
+  try{
+    await openVault($("unlock-pass").value);
+    $("unlock-pass").value = "";
+    enterMain();
+  }catch(e){ m.textContent = "Contraseña incorrecta."; }
+}
+function lockNow(){
+  vaultKey = null; accounts = []; folders = []; currentFilter = null;
+  $("list").innerHTML = ""; $("folderbar").innerHTML = ""; $("search").value = "";
+  for(const mid of ["modal","modal-mig","modal-fold"]) $(mid).classList.remove("open");
+  boot();
+}
+function enterMain(){
+  lastActivity = Date.now();
+  show("scr-main");
+  renderFolders();
+  renderList(true);
+}
+
+/* ================= carpetas ================= */
+const folderById = id => folders.find(f => f.id === id) || null;
+
+function renderFolders(){
+  const bar = $("folderbar");
+  if(!folders.length && !accounts.some(a=>a.folder)){ bar.innerHTML = ""; return; }
+  const chips = [];
+  chips.push(`<span class="chip ${currentFilter===null?'active':''}" onclick="setFilter(null)">Todas</span>`);
+  for(const f of folders){
+    chips.push(`<span class="chip ${currentFilter===f.id?'active':''}" onclick="setFilter('${f.id}')">
+      <span class="dot" style="background:${escapeHtml(f.color)}"></span>${escapeHtml(f.name)}</span>`);
+  }
+  if(accounts.some(a => !a.folder || !folderById(a.folder)))
+    chips.push(`<span class="chip ${currentFilter==='none'?'active':''}" onclick="setFilter('none')">
+      <span class="dot" style="background:var(--line)"></span>Sin carpeta</span>`);
+  bar.innerHTML = chips.join("");
+}
+function setFilter(v){ currentFilter = v; renderFolders(); renderList(true); }
+
+function openFolders(){ $("modal-fold").classList.add("open"); renderFoldRows(); }
+function closeFolders(){ $("modal-fold").classList.remove("open"); }
+function renderFoldRows(){
+  const box = $("fold-rows");
+  if(!folders.length){
+    box.innerHTML = '<p class="hint">Todavía no hay carpetas.</p>';
+    return;
+  }
+  box.innerHTML = folders.map((f,i) => `
+    <div class="foldrow">
+      <input type="color" value="${escapeHtml(f.color)}" onchange="updFolder(${i},'color',this.value)" title="Color">
+      <input type="text" value="${escapeHtml(f.name)}" onchange="updFolder(${i},'name',this.value)" placeholder="Nombre de la carpeta">
+      <button class="icobtn" onclick="delFolder(${i})" title="Eliminar carpeta">✕</button>
+    </div>`).join("");
+}
+async function addFolder(){
+  folders.push({
+    id: "f" + Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+    name: "Nueva carpeta",
+    color: "#ffb454"
+  });
+  await saveVault();
+  renderFoldRows(); renderFolders(); renderList(true);
+}
+async function updFolder(i, prop, val){
+  if(prop === "name" && !val.trim()) val = "Sin nombre";
+  folders[i][prop] = prop === "name" ? val.trim() : val;
+  await saveVault();
+  renderFolders(); renderList(true);
+}
+async function delFolder(i){
+  const f = folders[i];
+  const n = accounts.filter(a => a.folder === f.id).length;
+  if(!confirm(`¿Eliminar la carpeta «${f.name}»?` + (n ? ` Sus ${n} cuentas pasarán a «Sin carpeta» (no se borran).` : ""))) return;
+  for(const a of accounts) if(a.folder === f.id) a.folder = null;
+  folders.splice(i,1);
+  if(currentFilter === f.id) currentFilter = null;
+  await saveVault();
+  renderFoldRows(); renderFolders(); renderList(true);
+}
+function fillFolderSelect(sel, selected){
+  const opts = ['<option value="">— Sin carpeta —</option>'];
+  for(const f of folders)
+    opts.push(`<option value="${f.id}" ${selected===f.id?'selected':''}>${escapeHtml(f.name)}</option>`);
+  sel.innerHTML = opts.join("");
+}
+
+/* ================= alta / edición / baja de cuentas ================= */
+function openAdd(idx){
+  editIdx = (typeof idx === "number") ? idx : null;
+  $("add-title").textContent = editIdx === null ? "Nueva cuenta" : "Editar cuenta";
+  const acc = editIdx !== null ? accounts[editIdx] : null;
+  $("add-issuer").value = acc ? acc.issuer : "";
+  $("add-label").value  = acc ? (acc.label||"") : "";
+  $("add-secret").value = acc ? acc.secret : "";
+  fillFolderSelect($("add-folder"), acc ? acc.folder :
+    (currentFilter && currentFilter !== "none" ? currentFilter : ""));
+  $("add-msg").textContent = "";
+  $("modal").classList.add("open");
+  $("add-issuer").focus();
+}
+function closeAdd(){
+  $("modal").classList.remove("open");
+  editIdx = null;
+  for(const i of ["add-issuer","add-label","add-secret"]) $(i).value = "";
+}
+function parseOtpauth(uri){
+  const u = new URL(uri);
+  if(u.protocol !== "otpauth:" || u.host !== "totp") throw new Error("Solo se admiten URIs otpauth://totp/");
+  const p = u.searchParams;
+  let label = decodeURIComponent(u.pathname.replace(/^\/+/,""));
+  let issuer = p.get("issuer") || "";
+  if(label.includes(":")){ const [a,b] = label.split(":"); if(!issuer) issuer = a.trim(); label = b.trim(); }
+  return {
+    issuer: issuer || "Sin nombre",
+    label,
+    secret: p.get("secret") || "",
+    digits: parseInt(p.get("digits")||"6",10),
+    period: parseInt(p.get("period")||"30",10),
+    algo: (p.get("algorithm")||"SHA1").toUpperCase()
+  };
+}
+async function addAccount(){
+  const m = $("add-msg"); m.className = "msg err"; m.textContent = "";
+  const raw = $("add-secret").value.trim();
+  const folderSel = $("add-folder").value || null;
+  try{
+    let acc;
+    if(raw.toLowerCase().startsWith("otpauth://")){
+      acc = parseOtpauth(raw);
+      if($("add-issuer").value.trim()) acc.issuer = $("add-issuer").value.trim();
+      if($("add-label").value.trim())  acc.label  = $("add-label").value.trim();
+    }else{
+      acc = {
+        issuer: $("add-issuer").value.trim() || "Sin nombre",
+        label: $("add-label").value.trim(),
+        secret: raw, digits: 6, period: 30, algo: "SHA1"
+      };
+      if(editIdx !== null){
+        const prev = accounts[editIdx];
+        acc.digits = prev.digits; acc.period = prev.period; acc.algo = prev.algo;
+      }
+    }
+    acc.folder = folderSel;
+    if(!acc.secret) throw new Error("Falta el secreto");
+    base32Decode(acc.secret);
+    await totp(acc, 1);
+    if(editIdx !== null) accounts[editIdx] = acc;
+    else accounts.push(acc);
+    await saveVault();
+    closeAdd();
+    renderFolders(); renderList(true);
+  }catch(e){ m.textContent = e.message || "Secreto no válido."; }
+}
+async function delAccount(idx, ev){
+  ev.stopPropagation();
+  if(!confirm(`¿Eliminar «${accounts[idx].issuer}»? Asegúrate de tenerla en otro dispositivo o perderás el acceso.`)) return;
+  accounts.splice(idx,1);
+  await saveVault();
+  renderFolders(); renderList(true);
+}
+function editAccount(idx, ev){ ev.stopPropagation(); openAdd(idx); }
+
+/* ================= exportar / importar bóveda ================= */
+function exportVault(){
+  const blob = new Blob([vaultRaw], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "boveda-totp-" + new Date().toISOString().slice(0,10) + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function importVaultFile(fromCreate){
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = "application/json";
+  inp.onchange = async () => {
+    try{
+      const txt = await inp.files[0].text();
+      const obj = JSON.parse(txt);
+      if(!obj.salt || !obj.iv || !obj.data) throw 0;
+      await storeWrite(txt);
+      lockNow();
+      const m = $("unlock-msg"); m.className = "msg ok"; m.textContent = "Copia importada. Usa su contraseña maestra.";
+    }catch(e){ alert("El fichero no parece una copia de bóveda válida."); }
+  };
+  inp.click();
+}
+
+/* ========== importación desde Google Authenticator (otpauth-migration) ========== */
+function migB64ToBytes(dataParam){
+  let s = decodeURIComponent(dataParam.replace(/ /g,"%2B"));
+  s = s.replace(/-/g,"+").replace(/_/g,"/");
+  while(s.length % 4) s += "=";
+  return Uint8Array.from(atob(s), c => c.charCodeAt(0));
+}
+function pbFields(bytes){
+  const out = [];
+  let i = 0;
+  function varint(){
+    let shift = 0n, val = 0n;
+    while(true){
+      const b = bytes[i++];
+      val |= BigInt(b & 0x7f) << shift;
+      if(!(b & 0x80)) return val;
+      shift += 7n;
+    }
+  }
+  while(i < bytes.length){
+    const tag = Number(varint());
+    const field = tag >>> 3, wire = tag & 7;
+    if(wire === 0){ out.push({field, wire, value: varint()}); }
+    else if(wire === 2){
+      const len = Number(varint());
+      out.push({field, wire, value: bytes.slice(i, i+len)});
+      i += len;
+    }
+    else if(wire === 5){ i += 4; }
+    else if(wire === 1){ i += 8; }
+    else throw new Error("Formato protobuf inesperado");
+  }
+  return out;
+}
+function decodeMigration(uri){
+  const u = new URL(uri.trim());
+  if(u.protocol !== "otpauth-migration:") throw new Error("La URI no es otpauth-migration://");
+  const m = uri.match(/[?&]data=([^&]+)/);
+  if(!m) throw new Error("La URI no contiene el parámetro data");
+  const payload = pbFields(migB64ToBytes(m[1]));
+  const algos = {0:"SHA1",1:"SHA1",2:"SHA256",3:"SHA512"};
+  const found = [];
+  for(const f of payload){
+    if(f.field !== 1 || f.wire !== 2) continue;
+    const p = pbFields(f.value);
+    const acc = {issuer:"", label:"", secret:"", digits:6, period:30, algo:"SHA1", type:2};
+    for(const g of p){
+      if(g.field===1) acc.secret = base32Encode(g.value);
+      else if(g.field===2) acc.label = dec.decode(g.value);
+      else if(g.field===3) acc.issuer = dec.decode(g.value);
+      else if(g.field===4) acc.algo = algos[Number(g.value)] || "SHA1";
+      else if(g.field===5) acc.digits = Number(g.value)===2 ? 8 : 6;
+      else if(g.field===6) acc.type = Number(g.value);
+    }
+    if(acc.type !== 2) continue;
+    if(!acc.issuer && acc.label.includes(":")){
+      const [a,b] = acc.label.split(":");
+      acc.issuer = a.trim(); acc.label = b.trim();
+    }
+    if(acc.issuer && acc.label.toLowerCase().startsWith(acc.issuer.toLowerCase()+":"))
+      acc.label = acc.label.slice(acc.issuer.length+1).trim();
+    if(!acc.issuer) acc.issuer = acc.label || "Sin nombre";
+    delete acc.type;
+    if(acc.secret) found.push(acc);
+  }
+  if(!found.length) throw new Error("No se encontraron cuentas TOTP en la exportación");
+  return found;
+}
+async function importMigrationAccounts(found){
+  const destFolder = $("mig-folder").value || null;
+  let added = 0, dupes = 0;
+  for(const acc of found){
+    if(accounts.some(a => a.secret === acc.secret)){ dupes++; continue; }
+    acc.folder = destFolder;
+    accounts.push(acc); added++;
+  }
+  await saveVault();
+  renderFolders(); renderList(true);
+  const m = $("mig-msg"); m.className = "msg ok";
+  m.textContent = `Importadas ${added} cuentas` + (dupes ? ` (${dupes} ya existían)` : "") + ". Puedes subir el siguiente QR si hay más.";
+}
+function openMigrate(){
+  $("modal-mig").classList.add("open");
+  $("mig-msg").textContent = "";
+  fillFolderSelect($("mig-folder"), currentFilter && currentFilter !== "none" ? currentFilter : "");
+}
+function closeMigrate(){ $("modal-mig").classList.remove("open"); $("mig-uri").value=""; $("mig-file").value=""; }
+async function migFromUriField(){
+  const m = $("mig-msg"); m.className = "msg err"; m.textContent = "";
+  try{ await importMigrationAccounts(decodeMigration($("mig-uri").value)); $("mig-uri").value=""; }
+  catch(e){ m.textContent = e.message || "No se pudo descodificar la URI."; }
+}
+async function migFromImage(file){
+  const m = $("mig-msg"); m.className = "msg err"; m.textContent = "";
+  if(!file) return;
+  if(typeof jsQR === "undefined"){
+    m.textContent = "El lector de QR no está disponible en este navegador. Pega la URI otpauth-migration:// manualmente.";
+    return;
+  }
+  try{
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    await img.decode();
+    const cv = document.createElement("canvas");
+    cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+    const ctx = cv.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const px = ctx.getImageData(0, 0, cv.width, cv.height);
+    URL.revokeObjectURL(img.src);
+    const qr = jsQR(px.data, cv.width, cv.height);
+    if(!qr) throw new Error("No se detectó ningún QR en la imagen. Prueba con una captura más nítida y sin recortar.");
+    await importMigrationAccounts(decodeMigration(qr.data));
+    $("mig-file").value = "";
+  }catch(e){ m.textContent = e.message || "No se pudo leer el QR."; }
+}
+
+/* ================= render de la lista ================= */
+function visibleAccounts(){
+  const q = $("search").value.trim().toLowerCase();
+  const out = [];
+  for(let i=0;i<accounts.length;i++){
+    const a = accounts[i];
+    const hasFolder = a.folder && folderById(a.folder);
+    if(currentFilter === "none" && hasFolder) continue;
+    if(currentFilter && currentFilter !== "none" && a.folder !== currentFilter) continue;
+    if(q && !(a.issuer.toLowerCase().includes(q) || (a.label||"").toLowerCase().includes(q))) continue;
+    out.push({a, idx:i});
+  }
+  return out;
+}
+async function cardHtml(entry, now){
+  const {a, idx} = entry;
+  const period = a.period || 30;
+  const counter = Math.floor(now/period);
+  const code = await totp(a, counter);
+  const remain = period - (now % period);
+  const pct = (remain/period*100).toFixed(1);
+  const grouped = code.length===6 ? code.slice(0,3)+" "+code.slice(3) : code;
+  const f = a.folder ? folderById(a.folder) : null;
+  const edge = f ? escapeHtml(f.color) : "var(--line)";
+  return `
+    <div class="card ${remain<=5?'expiring':''}" data-idx="${idx}" data-period="${period}"
+         style="border-left-color:${edge}" onclick="copyCode(${idx},this)" title="Clic para copiar">
+      <div class="meta">
+        <div class="issuer">${escapeHtml(a.issuer)}</div>
+        <div class="label">${escapeHtml(a.label||"")}</div>
+      </div>
+      <div class="code">${grouped}</div>
+      <button class="icobtn" onclick="editAccount(${idx},event)" title="Editar">✎</button>
+      <button class="icobtn del" onclick="delAccount(${idx},event)" title="Eliminar">✕</button>
+      <span class="copied-tag">copiado ✓</span>
+      <div class="timebar" style="width:${pct}%"></div>
+    </div>`;
+}
+async function renderList(rebuild){
+  const list = $("list");
+  const now = Math.floor(Date.now()/1000);
+  if(!rebuild){ updateTimebars(now); return; }
+  if(!accounts.length){
+    list.innerHTML = '<div class="empty">Todavía no hay cuentas.<br>Pulsa <b>+ Añadir</b> y pega el secreto Base32 o la URI otpauth del servicio,<br>o importa todas tus cuentas desde Google Authenticator.</div>';
+    return;
+  }
+  const vis = visibleAccounts();
+  if(!vis.length){
+    list.innerHTML = '<div class="empty">Ninguna cuenta coincide con el filtro actual.</div>';
+    return;
+  }
+  const parts = [];
+  const grouping = currentFilter === null && folders.length > 0;
+  if(grouping){
+    for(const f of folders){
+      const grp = vis.filter(e => e.a.folder === f.id);
+      if(!grp.length) continue;
+      parts.push(`<div class="seclabel"><span class="dot" style="background:${escapeHtml(f.color)}"></span>${escapeHtml(f.name)}</div>`);
+      for(const e of grp) parts.push(await cardHtml(e, now));
+    }
+    const loose = vis.filter(e => !e.a.folder || !folderById(e.a.folder));
+    if(loose.length){
+      if(parts.length) parts.push(`<div class="seclabel"><span class="dot" style="background:var(--line)"></span>Sin carpeta</div>`);
+      for(const e of loose) parts.push(await cardHtml(e, now));
+    }
+  }else{
+    for(const e of vis) parts.push(await cardHtml(e, now));
+  }
+  list.innerHTML = parts.join("");
+}
+function updateTimebars(now){
+  for(const card of document.querySelectorAll("#list .card")){
+    const period = parseInt(card.dataset.period,10) || 30;
+    const remain = period - (now % period);
+    card.querySelector(".timebar").style.width = (remain/period*100).toFixed(1) + "%";
+    card.classList.toggle("expiring", remain <= 5);
+  }
+}
+async function copyCode(idx, el){
+  const a = accounts[idx];
+  const period = a.period || 30;
+  const code = await totp(a, Math.floor(Date.now()/1000/period));
+  try{ await navigator.clipboard.writeText(code); }
+  catch(e){
+    const t = document.createElement("textarea");
+    t.value = code; document.body.appendChild(t); t.select();
+    document.execCommand("copy"); t.remove();
+  }
+  // limpieza del portapapeles a los 30 segundos (mejor esfuerzo: requiere que la ventana tenga el foco)
+  if(clipTimer) clearTimeout(clipTimer);
+  clipTimer = setTimeout(async () => {
+    try{ if(document.hasFocus()) await navigator.clipboard.writeText(""); }catch(e){}
+  }, 30000);
+  const tag = el.querySelector(".copied-tag");
+  tag.classList.add("show");
+  setTimeout(()=>tag.classList.remove("show"), 1200);
+}
+
+/* ================= ciclo principal y bloqueo automático ================= */
+for(const ev of ["pointerdown","keydown","wheel"])
+  document.addEventListener(ev, () => { lastActivity = Date.now(); }, {passive:true});
+
+setInterval(() => {
+  const d = new Date();
+  $("clock").textContent = d.toLocaleTimeString("es-ES");
+  if(vaultKey && $("scr-main").style.display !== "none"){
+    if(Date.now() - lastActivity > AUTOLOCK_MS){ lockNow(); return; }
+    const w = Math.floor(Date.now()/30000);
+    renderList(w !== lastWindow);
+    lastWindow = w;
+  }
+}, 1000);
+
+(async () => { await storeInit(); boot(); })();
+</script>
+</body>
+</html>
