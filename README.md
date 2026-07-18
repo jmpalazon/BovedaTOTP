@@ -8,6 +8,10 @@ Funciona completamente sin conexión: nada sale de tu equipo.
 
 Desarrollada por [José Mª Palazón](https://josemariapalazon.es).
 
+| Recién instalada | Con cuentas organizadas en carpetas |
+|:---:|:---:|
+| ![Bóveda TOTP recién instalada](docs/bovedatotp.png) | ![Cuentas agrupadas en carpetas con colores](docs/bovedatotp2.png) |
+
 ## Características
 
 - **Cifrado total**: secretos, nombres de cuentas, carpetas y colores se guardan en un
